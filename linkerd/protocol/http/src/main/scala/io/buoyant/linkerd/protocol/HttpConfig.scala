@@ -6,11 +6,11 @@ import com.fasterxml.jackson.core.{JsonParser, TreeNode}
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.fasterxml.jackson.databind.{DeserializationContext, JsonDeserializer, JsonNode}
 import com.twitter.conversions.storage._
-import com.twitter.finagle.http.{param => hparam}
 import com.twitter.finagle.buoyant.PathMatcher
 import com.twitter.finagle.buoyant.linkerd.{DelayedRelease, Headers, HttpEngine, HttpTraceInitializer}
 import com.twitter.finagle.client.{AddrMetadataExtraction, StackClient}
-import com.twitter.finagle.http.Request
+import com.twitter.finagle.filter.DtabStatsFilter
+import com.twitter.finagle.http.{Request, Response, param => hparam}
 import com.twitter.finagle.service.Retries
 import com.twitter.finagle.{Path, Stack, param => fparam}
 import com.twitter.util.Future
@@ -37,6 +37,7 @@ class HttpInitializer extends ProtocolInitializer.Simple {
       .prepend(http.AccessLogger.module)
       .replace(HttpTraceInitializer.role, HttpTraceInitializer.clientModule)
       .replace(Headers.Ctx.clientModule.role, Headers.Ctx.clientModule)
+      .insertAfter(DtabStatsFilter.role, HttpLoggerConfig.module)
       .insertAfter(Retries.Role, http.StatusCodeStatsFilter.module)
       .insertAfter(AddrMetadataExtraction.Role, RewriteHostHeader.module)
 
@@ -182,6 +183,7 @@ class HttpIdentifierConfigDeserializer extends JsonDeserializer[Option[Seq[HttpI
 case class HttpConfig(
   httpAccessLog: Option[String],
   @JsonDeserialize(using = classOf[HttpIdentifierConfigDeserializer]) identifier: Option[Seq[HttpIdentifierConfig]],
+  loggers: Option[Seq[HttpLoggerConfig]],
   maxChunkKB: Option[Int],
   maxHeadersKB: Option[Int],
   maxInitialLineKB: Option[Int],
@@ -209,6 +211,12 @@ case class HttpConfig(
   )
 
   @JsonIgnore
+  private[this] val combinedLoggers = loggers.map { configs =>
+    HttpLoggerConfig.param.Logger { (params: Stack.Params) =>
+      configs.map(_.mk(params)).reduce(_ andThen _)
+    }
+  }
+  @JsonIgnore
   private[this] val combinedIdentifier = identifier.map { configs =>
     Http.param.HttpIdentifier { (prefix, dtab) =>
       RoutingFactory.Identifier.compose(configs.map(_.newIdentifier(prefix, dtab)))
@@ -217,6 +225,7 @@ case class HttpConfig(
   @JsonIgnore
   override def routerParams: Stack.Params = super.routerParams
     .maybeWith(httpAccessLog.map(AccessLogger.param.File(_)))
+    .maybeWith(combinedLoggers)
     .maybeWith(combinedIdentifier)
     .maybeWith(maxChunkKB.map(kb => hparam.MaxChunkSize(kb.kilobytes)))
     .maybeWith(maxHeadersKB.map(kb => hparam.MaxHeaderSize(kb.kilobytes)))

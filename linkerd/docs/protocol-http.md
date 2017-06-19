@@ -31,6 +31,7 @@ Key | Default Value | Description
 dstPrefix | `/svc` | A path prefix used by [Http-specific identifiers](#http-1-1-identifiers).
 httpAccessLog | none | Sets the access log path.  If not specified, no access log is written.
 identifier | The `io.l5d.header.token` identifier | An identifier or list of identifiers.  See [Http-specific identifiers](#http-1-1-identifiers).
+loggers | A list of loggers.  See [Http-specific loggers](#http-1-1-loggers).
 maxChunkKB | 8 | The maximum size of an HTTP chunk.
 maxHeadersKB | 8 | The maximum size of all headers in an HTTP message.
 maxInitialLineKB | 4 | The maximum size of an initial HTTP message line.
@@ -447,6 +448,41 @@ Key | Default Value | Description
 --- | ------------- | -----------
 dstPrefix | `/svc` | The `dstPrefix` as set in the routers block.
 path | N/A | The path given in the configuration.
+
+<a name="http-1-1-loggers"></a>
+## HTTP/1.1 Loggers
+
+Loggers allow recording of arbitrary information about requests. Destination of
+information is specific to each logger. All HTTP/1.1 loggers have a `kind`. If a
+list of loggers is provided, they each log in the order they are defined.
+
+Key | Default Value | Description
+--- | ------------- | -----------
+kind | _required_ | Only [`io.l5d.istio`](#istio-logger) is currently supported.
+
+<a name="istio-logger"></a>
+### Istio Logger
+
+kind: `io.l5d.istio`.
+
+With this logger, all HTTP requests are sent to an Istio Mixer for telemetry
+recording and aggregation.
+
+#### Logger Configuration:
+
+> Configuration example
+
+```yaml
+loggers:
+- kind: io.l5d.istio
+  mixerHost: istio-mixer.default.svc.cluster.local
+  mixerPort: 9091
+```
+
+Key | Default Value | Description
+--- | ------------- | -----------
+mixerHost | `istio-mixer.default.svc.cluster.local` | Hostname of the Istio Mixer server.
+mixerPort | `9091` | Port of the Mixer server.
 
 <a name="http-engines"></a>
 ## HTTP Engines
